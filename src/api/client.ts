@@ -14,6 +14,16 @@ import type {
 
 const PD_BASE = 'https://api.pagerduty.com';
 
+export class EnrichmentAccessError extends Error {
+  constructor() {
+    super(
+      'This enrichment feature is not enabled on your PagerDuty account. ' +
+      'Contact your PagerDuty account team for access.'
+    );
+    this.name = 'EnrichmentAccessError';
+  }
+}
+
 function headers(token: string, contentType = 'application/json'): Record<string, string> {
   return {
     Authorization: `Token token=${token}`,
@@ -24,6 +34,7 @@ function headers(token: string, contentType = 'application/json'): Record<string
 
 async function checkOk(res: Response): Promise<Response> {
   if (!res.ok) {
+    if (res.status === 403) throw new EnrichmentAccessError();
     let msg = `HTTP ${res.status}`;
     try {
       const body = await res.json();
@@ -34,6 +45,12 @@ async function checkOk(res: Response): Promise<Response> {
     throw new Error(msg);
   }
   return res;
+}
+
+export async function checkToken(token: string): Promise<void> {
+  const res = await fetch(`${PD_BASE}/abilities`, { headers: headers(token) });
+  if (res.status === 401) throw new Error('Invalid API token — check that it is correct and has read/write access.');
+  if (!res.ok) throw new Error(`Unexpected response from PagerDuty: HTTP ${res.status}`);
 }
 
 // ── Schemas ───────────────────────────────────────────────────────────────────

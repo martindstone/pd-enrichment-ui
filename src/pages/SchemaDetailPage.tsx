@@ -18,6 +18,8 @@ import { SchemaFormModal } from '../components/SchemaFormModal';
 import {
   useRecords, useDeleteRecord, useExportAllRecords, useSnStatusMap, keys,
 } from '../hooks/queries';
+import { EnrichmentAccessError } from '../api/client';
+import { AccessDeniedAlert } from '../components/AccessDeniedAlert';
 import type { EnrichmentSchema, EnrichmentRecord } from '../api/types';
 
 const PAGE_SIZE = 25;
@@ -202,14 +204,21 @@ export function SchemaDetailPage({ token, schema, onBack, onSchemaUpdated }: Pro
                   Export CSV
                 </Button>
                 <Tooltip label="Refresh">
-                  <ActionIcon variant="subtle" size="sm" onClick={() => { setPageIndex(0); qc.invalidateQueries({ queryKey: keys.records(token, schema.id) }); }}>
+                  <ActionIcon variant="subtle" size="sm" onClick={async () => {
+                    setPageIndex(0);
+                    await qc.refetchQueries({ queryKey: keys.records(token, schema.id) });
+                    notifications.show({ color: 'teal', message: 'Refreshed', autoClose: 1500 });
+                  }}>
                     <IconRefresh size={14} />
                   </ActionIcon>
                 </Tooltip>
               </Group>
             </Group>
 
-            {error && <Alert color="red">{(error as Error).message}</Alert>}
+            {error && (error instanceof EnrichmentAccessError
+              ? <AccessDeniedAlert />
+              : <Alert color="red">{(error as Error).message}</Alert>
+            )}
 
             <DataTable
               data={records}

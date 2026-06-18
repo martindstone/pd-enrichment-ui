@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { AppShell, Group, Title, ActionIcon, Tooltip, Text, Tabs } from '@mantine/core';
+import { useState, useEffect } from 'react';
+import { AppShell, Group, Title, ActionIcon, Tooltip, Text, Tabs, Center, Loader } from '@mantine/core';
 import { IconKey, IconDatabase, IconBrandSnowflake } from '@tabler/icons-react';
 import { useToken } from './hooks/useToken';
 import { TokenGate } from './components/TokenGate';
 import { SchemaListPage } from './pages/SchemaListPage';
 import { SchemaDetailPage } from './pages/SchemaDetailPage';
 import { SnIntegrationPage } from './pages/SnIntegrationPage';
+import { checkToken } from './api/client';
 import type { EnrichmentSchema } from './api/types';
 
 type PageView = { page: 'list' } | { page: 'detail'; schema: EnrichmentSchema };
@@ -16,7 +17,37 @@ export default function App() {
   const [localView, setLocalView] = useState<PageView>({ page: 'list' });
   const [snView, setSnView] = useState<PageView>({ page: 'list' });
 
-  if (!token) return <TokenGate onSave={setToken} />;
+  // Validate stored token on mount
+  const [checking, setChecking] = useState(!!token);
+  const [tokenError, setTokenError] = useState('');
+
+  useEffect(() => {
+    if (!token) { setChecking(false); return; }
+    checkToken(token)
+      .then(() => setChecking(false))
+      .catch((e: Error) => {
+        clearToken();
+        setTokenError(e.message);
+        setChecking(false);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (checking) {
+    return (
+      <Center h="100vh">
+        <Loader size="sm" />
+      </Center>
+    );
+  }
+
+  if (!token) {
+    return (
+      <TokenGate
+        onSave={setToken}
+        initialError={tokenError || undefined}
+      />
+    );
+  }
 
   return (
     <AppShell header={{ height: 52 }} padding="md">

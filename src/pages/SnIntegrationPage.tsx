@@ -13,6 +13,7 @@ import {
 } from '@tabler/icons-react';
 import { createColumnHelper } from '@tanstack/react-table';
 import { DataTable } from '../components/DataTable';
+import { AccessDeniedAlert } from '../components/AccessDeniedAlert';
 import { SnStatusBadge } from '../components/SnStatusBadge';
 import { SnTableFormModal } from '../components/SnTableFormModal';
 import { SnTableTestModal } from '../components/SnTableTestModal';
@@ -23,6 +24,7 @@ import {
   useSnIntegrations, useSchemas, useDeleteSnTable, useEnableSnTable,
   useDeleteSnIntegration, keys,
 } from '../hooks/queries';
+import { EnrichmentAccessError } from '../api/client';
 import type { SnCmdbTable, SnFieldMapping, EnrichmentSchema } from '../api/types';
 import type { SnSessionCreds } from '../components/SnSetupModal';
 
@@ -112,6 +114,11 @@ export function SnIntegrationPage({ token, onViewRecords }: Props) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: keys.snIntegrations(token) });
 
+  const handleRefresh = async () => {
+    await qc.refetchQueries({ queryKey: keys.snIntegrations(token) });
+    notifications.show({ color: 'teal', message: 'Refreshed', autoClose: 1500 });
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between">
@@ -125,14 +132,17 @@ export function SnIntegrationPage({ token, onViewRecords }: Props) {
             </Tooltip>
           )}
           <Tooltip label="Refresh">
-            <ActionIcon variant="subtle" onClick={invalidate} loading={isLoading}>
+            <ActionIcon variant="subtle" onClick={handleRefresh} loading={isLoading}>
               <IconRefresh size={18} />
             </ActionIcon>
           </Tooltip>
         </Group>
       </Group>
 
-      {error && <Alert color="red" icon={<IconAlertCircle size={14} />}>{(error as Error).message}</Alert>}
+      {error && (error instanceof EnrichmentAccessError
+        ? <AccessDeniedAlert />
+        : <Alert color="red" icon={<IconAlertCircle size={14} />}>{(error as Error).message}</Alert>
+      )}
 
       {isLoading ? (
         <Stack gap="sm">{[1, 2].map((i) => <Skeleton key={i} height={120} />)}</Stack>

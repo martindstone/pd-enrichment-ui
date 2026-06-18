@@ -11,7 +11,9 @@ import { IconPlus, IconUpload, IconEye, IconEdit, IconTrash, IconRefresh } from 
 import { DataTable } from '../components/DataTable';
 import { SchemaFormModal } from '../components/SchemaFormModal';
 import { CsvImportModal } from '../components/CsvImportModal';
+import { AccessDeniedAlert } from '../components/AccessDeniedAlert';
 import { useCsvSchemas, useDeleteSchema, keys } from '../hooks/queries';
+import { EnrichmentAccessError } from '../api/client';
 import type { EnrichmentSchema, SchemaField } from '../api/types';
 
 const fieldCol = createColumnHelper<SchemaField>();
@@ -67,6 +69,11 @@ export function SchemaListPage({ token, onSelect }: Props) {
 
   const invalidate = () => qc.invalidateQueries({ queryKey: keys.schemas(token) });
 
+  const handleRefresh = async () => {
+    await qc.refetchQueries({ queryKey: keys.schemas(token) });
+    notifications.show({ color: 'teal', message: 'Refreshed', autoClose: 1500 });
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between">
@@ -76,7 +83,7 @@ export function SchemaListPage({ token, onSelect }: Props) {
         </Group>
         <Group gap="xs">
           <Tooltip label="Refresh">
-            <ActionIcon variant="subtle" onClick={invalidate} loading={isLoading}>
+            <ActionIcon variant="subtle" onClick={handleRefresh} loading={isLoading}>
               <IconRefresh size={18} />
             </ActionIcon>
           </Tooltip>
@@ -89,7 +96,10 @@ export function SchemaListPage({ token, onSelect }: Props) {
         </Group>
       </Group>
 
-      {error && <Alert color="red">{(error as Error).message}</Alert>}
+      {error && (error instanceof EnrichmentAccessError
+        ? <AccessDeniedAlert />
+        : <Alert color="red">{(error as Error).message}</Alert>
+      )}
 
       {isLoading ? (
         <Stack gap="sm">{[1, 2, 3].map((i) => <Skeleton key={i} height={120} />)}</Stack>
