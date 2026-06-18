@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  Modal, Stack, TextInput, Button, Group, Text,
+  Modal, Stack, TextInput, PasswordInput, Button, Group, Text,
   ActionIcon, Alert, Table, SegmentedControl, Loader, Autocomplete,
 } from '@mantine/core';
-import { IconPlus, IconTrash, IconInfoCircle } from '@tabler/icons-react';
+import { IconPlus, IconTrash, IconInfoCircle, IconPlugConnected } from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
-import { addSnTable, updateSnTable, fetchSnTableList, fetchSnFieldList } from '../api/client';
+import { addSnTable, updateSnTable, fetchSnTableList, fetchSnFieldList, validateSnCredentials } from '../api/client';
 import type { SnTableInfo, SnFieldInfo } from '../api/client';
 import type { SnCmdbTable, SnFieldMappingInput } from '../api/types';
 import type { SnSessionCreds } from './SnSetupModal';
@@ -24,10 +24,30 @@ interface Props {
   onSaved: (table: SnCmdbTable) => void;
   existing?: SnCmdbTable;
   snCreds?: SnSessionCreds;
+  snInstance?: { instanceEndpoint: string; user: string };
 }
 
-export function SnTableFormModal({ token, integrationId, opened, onClose, onSaved, existing, snCreds }: Props) {
+export function SnTableFormModal({ token, integrationId, opened, onClose, onSaved, existing, snCreds, snInstance }: Props) {
   const isEdit = !!existing;
+
+  // Local session creds — used when parent doesn't have creds in memory (e.g. fresh page load)
+  const [localPassword, setLocalPassword] = useState('');
+  const [connecting, setConnecting] = useState(false);
+  const [localCreds, setLocalCreds] = useState<SnSessionCreds | undefined>();
+  const effectiveCreds = snCreds ?? localCreds;
+
+  const handleConnect = async () => {
+    if (!snInstance) return;
+    setConnecting(true);
+    try {
+      await validateSnCredentials(snInstance.instanceEndpoint, snInstance.user, localPassword);
+      setLocalCreds({ instanceEndpoint: snInstance.instanceEndpoint, user: snInstance.user, password: localPassword });
+    } catch (e: unknown) {
+      notifications.show({ color: 'red', title: 'Connection failed', message: (e as Error).message });
+    } finally {
+      setConnecting(false);
+    }
+  };
   const [displayName, setDisplayName] = useState('');
   const [ciTableName, setCiTableName] = useState('');
   const [queryFilter, setQueryFilter] = useState('');
@@ -67,6 +87,8 @@ export function SnTableFormModal({ token, integrationId, opened, onClose, onSave
       );
       setTableInfos([]);
       setFieldInfos([]);
+      setLocalPassword('');
+      setLocalCreds(undefined);
       if (snCreds) {
         loadSnTables('');
         if (tableVal) loadSnFields(tableVal);
@@ -74,19 +96,27 @@ export function SnTableFormModal({ token, integrationId, opened, onClose, onSave
     }
   }, [opened, existing]);
 
+  // Load tables when creds become available mid-session (user just connected)
+  useEffect(() => {
+    if (effectiveCreds && tableInfos.length === 0 && opened && !isEdit) {
+      loadSnTables('');
+      if (ciTableName) loadSnFields(ciTableName);
+    }
+  }, [effectiveCreds]);
+
   // Debounced table search when user types (add mode only)
   useEffect(() => {
-    if (!opened || !snCreds || isEdit) return;
+    if (!opened || !effectiveCreds || isEdit) return;
     const timer = setTimeout(() => loadSnTables(ciTableName), 400);
     return () => clearTimeout(timer);
-  }, [ciTableName, opened, snCreds, isEdit]);
+  }, [ciTableName, opened, effectiveCreds, isEdit]);
 
   const loadSnTables = async (search: string) => {
-    if (!snCreds) return;
+    if (!effectiveCreds) return;
     setLoadingTables(true);
     try {
       const tables = await fetchSnTableList(
-        snCreds.instanceEndpoint, snCreds.user, snCreds.password, search || undefined
+        effectiveCreds!.instanceEndpoint, effectiveCreds!.user, effectiveCreds!.password, search || undefined
       );
       setTableInfos(tables);
     } catch {
@@ -97,11 +127,11 @@ export function SnTableFormModal({ token, integrationId, opened, onClose, onSave
   };
 
   const loadSnFields = async (tableName: string) => {
-    if (!snCreds || !tableName.trim()) { setFieldInfos([]); return; }
+    if (!effectiveCreds || !tableName.trim()) { setFieldInfos([]); return; }
     setLoadingFields(true);
     try {
       const fields = await fetchSnFieldList(
-        snCreds.instanceEndpoint, snCreds.user, snCreds.password, tableName.trim()
+        effectiveCreds.instanceEndpoint, effectiveCreds.user, effectiveCreds.password, tableName.trim()
       );
       setFieldInfos(fields);
     } catch {
@@ -180,6 +210,29 @@ export function SnTableFormModal({ token, integrationId, opened, onClose, onSave
       size="xl"
     >
       <Stack gap="md">
+        {snInstance && !effectiveCreds && !isEdit && (
+          <Group align="flex-end">
+            <PasswordInput
+              label="ServiceNow password"
+              description={`Type the password for ServiceNow user "${snInstance.user}" to enable table & field autocomplete`}
+              placeholder="Optional"
+              value={localPassword}
+              onChange={(e) => setLocalPassword(e.currentTarget.value)}
+              onKeyDown={(e) => e.key === 'Enter' && localPassword && handleConnect()}
+              style={{ flex: 1 }}
+            />
+            <Button
+              variant="light"
+              leftSection={<IconPlugConnected size={14} />}
+              onClick={handleConnect}
+              loading={connecting}
+              disabled={!localPassword}
+            >
+              Connect
+            </Button>
+          </Group>
+        )}
+
         <Group grow align="flex-start">
           <TextInput
             label="Display Name"
@@ -188,7 +241,7 @@ export function SnTableFormModal({ token, integrationId, opened, onClose, onSave
             value={displayName}
             onChange={(e) => setDisplayName(e.currentTarget.value)}
           />
-          {snCreds && !isEdit ? (
+          {effectiveCreds && !isEdit ? (
             <Autocomplete
               label="SN Table Name"
               placeholder="cmdb_ci_server"
@@ -255,7 +308,7 @@ export function SnTableFormModal({ token, integrationId, opened, onClose, onSave
               {mappings.map((m, i) => (
                 <Table.Tr key={i}>
                   <Table.Td>
-                    {snCreds && fieldOptions.length > 0 ? (
+                    {effectiveCreds && fieldOptions.length > 0 ? (
                       <Autocomplete
                         size="xs"
                         placeholder="name"

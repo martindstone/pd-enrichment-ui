@@ -316,6 +316,9 @@ export function SnIntegrationPage({ token, onViewRecords }: Props) {
         onClose={() => setAddTableFor(null)}
         onSaved={() => { setAddTableFor(null); invalidate(); }}
         snCreds={snSessionCreds}
+        snInstance={integrations[0]?.credentials
+          ? { instanceEndpoint: integrations[0].credentials.instance_endpoint, user: integrations[0].credentials.user }
+          : undefined}
       />
       <SnTableFormModal
         token={token}
@@ -325,6 +328,9 @@ export function SnIntegrationPage({ token, onViewRecords }: Props) {
         onSaved={() => { setEditTable(null); invalidate(); }}
         existing={editTable?.table}
         snCreds={snSessionCreds}
+        snInstance={integrations[0]?.credentials
+          ? { instanceEndpoint: integrations[0].credentials.instance_endpoint, user: integrations[0].credentials.user }
+          : undefined}
       />
       <SnTableTestModal
         token={token}
